@@ -5,7 +5,8 @@ set(fw_name ${CONFIG}.elf)
 add_executable(${fw_name} ${PX4_SOURCE_DIR}/src/platforms/empty.c)
 add_dependencies(${fw_name} git_nuttx nuttx_build)
 
-get_property(module_libraries GLOBAL PROPERTY PX4_LIBRARIES)
+get_property(libraries GLOBAL PROPERTY PX4_LIBRARIES)
+get_property(module_libraries GLOBAL PROPERTY PX4_MODULE_LIBRARIES)
 
 # build NuttX
 add_subdirectory(${PX4_SOURCE_DIR}/platforms/nuttx/NuttX ${PX4_BINARY_DIR}/NuttX)
@@ -33,22 +34,25 @@ if (NOT LD_SCRIPT)
 	set(LD_SCRIPT ld.script)
 endif()
 
-target_link_libraries(${fw_name}
+target_link_libraries(${fw_name} PRIVATE
 	-T${PX4_BINARY_DIR}/NuttX/nuttx/configs/${BOARD}/scripts/${LD_SCRIPT}
 	-Wl,-Map=${PX4_BINARY_DIR}/${CONFIG}.map
 	-Wl,--warn-common
 	-Wl,--gc-sections
+
 	-Wl,--start-group
+	${libraries}
 	${module_libraries}
 	${nuttx_libs}
 	-Wl,--end-group
+
 	m
 	gcc
 	)
 
 if (config_romfs_root)
 	add_subdirectory(${PX4_SOURCE_DIR}/ROMFS ${PX4_BINARY_DIR}/ROMFS)
-	target_link_libraries(${fw_name} romfs)
+	target_link_libraries(${fw_name} PRIVATE romfs)
 	if (config_io_board)
 		add_dependencies(romfs copy_px4io_bin)
 	endif()

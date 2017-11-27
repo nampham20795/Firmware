@@ -31,8 +31,6 @@
 #
 ############################################################################
 
-include_directories(${PX4_SOURCE_DIR}/mavlink/include/mavlink)
-
 option(ENABLE_UART_RC_INPUT "Enable RC Input from UART mavlink connection" OFF)
 
 if(ENABLE_UART_RC_INPUT)
@@ -58,9 +56,10 @@ endif()
 px4_add_module(
 	MODULE modules__simulator
 	MAIN simulator
-	COMPILE_FLAGS
+	INCLUDES
+		${PX4_SOURCE_DIR}/mavlink/include/mavlink
 	SRCS
 		${SIMULATOR_SRCS}
 	DEPENDS
-		platforms__common
+		drivers_led # TODO: this needs to be refactored into the platform layer
 	)

@@ -110,9 +110,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PX4_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${PX4_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${PX4_BINARY_DIR})
 
+define_property(GLOBAL PROPERTY PX4_MODULE_LIBRARIES
+                 BRIEF_DOCS "PX4 module libs"
+                 FULL_DOCS "List of all PX4 module libraries"
+                 )
+
 define_property(GLOBAL PROPERTY PX4_LIBRARIES
                  BRIEF_DOCS "PX4 libs"
-                 FULL_DOCS "List of all PX4 module libraries"
+                 FULL_DOCS "List of all PX4 libraries"
                  )
 
 #=============================================================================
@@ -185,8 +190,6 @@ execute_process(
 
 px4_add_git_submodule(TARGET git_cmake_hexagon PATH "cmake/cmake_hexagon")
 px4_add_git_submodule(TARGET git_uavcan_board_ident PATH "cmake/configs/uavcan_board_ident")
-px4_add_git_submodule(TARGET git_ecl PATH "src/lib/ecl")
-px4_add_git_submodule(TARGET git_matrix PATH "src/lib/matrix")
 
 #=============================================================================
 
@@ -245,9 +248,6 @@ foreach(conf ${px4_required_config})
 		message(FATAL_ERROR "cmake/${config_module} must define ${conf}")
 	endif()
 endforeach()
-
-# force static lib build
-set(BUILD_SHARED_LIBS OFF)
 
 #=============================================================================
 # ccache
@@ -350,15 +350,13 @@ add_definitions(${definitions})
 #
 include(common/px4_metadata)
 
-add_subdirectory(msg)
+add_subdirectory(msg EXCLUDE_FROM_ALL)
 
 px4_generate_airframes_xml(BOARD ${BOARD})
 
 #=============================================================================
 # DriverFramework
 #
-
-px4_add_git_submodule(TARGET git_driverframework PATH "src/lib/DriverFramework")
 
 # List the DriverFramework drivers
 if (DEFINED config_df_driver_list)
@@ -403,10 +401,18 @@ endif()
 #=============================================================================
 # subdirectories
 #
+
+add_subdirectory(src/platforms EXCLUDE_FROM_ALL)
+add_subdirectory(src/modules/systemlib EXCLUDE_FROM_ALL)
+add_subdirectory(src/lib EXCLUDE_FROM_ALL)
+add_subdirectory(src/drivers/boards EXCLUDE_FROM_ALL)
+add_subdirectory(src/drivers/device EXCLUDE_FROM_ALL)
+
 foreach(module ${config_module_list})
 	add_subdirectory(src/${module})
 endforeach()
 
+# firmware added last to generate the builtin for included modules
 add_subdirectory(src/firmware/${OS})
 
 #=============================================================================
