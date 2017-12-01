@@ -25,6 +25,7 @@ pipeline {
                       sh "make nuttx_${node_name}_default"
                       sh "ccache -s"
                       archive 'build/*/*.px4'
+                      stash 'build/*/*.px4'
                     }
                   }
                 }
@@ -200,10 +201,16 @@ pipeline {
         }
       }
       when {
-        branch '*/master|*/beta|*/stable'
+        anyOf {
+          branch 'master'
+          branch 'beta'
+          branch 'stable'
+          branch 'pr-jenkins'
+        }
       }
       steps {
-        sh 'echo "uploading to S3"'
+        unstash 'build/*/*.px4'
+        s3Upload(file:'*.px4', bucket:'px4-travis', path:'Firmware/TEST/)
       }
     }
   }
