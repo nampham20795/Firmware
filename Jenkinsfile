@@ -164,6 +164,7 @@ pipeline {
           steps {
             sh 'make clean'
             sh 'make tests_coverage'
+            sh 'curl -s https://codecov.io/bash | bash'
             // publish html
             publishHTML target: [
               allowMissing: false,
