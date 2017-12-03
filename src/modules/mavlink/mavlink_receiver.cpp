@@ -1229,6 +1229,8 @@ MavlinkReceiver::handle_message_set_attitude_target(mavlink_message_t *msg)
 	mavlink_set_attitude_target_t set_attitude_target;
 	mavlink_msg_set_attitude_target_decode(msg, &set_attitude_target);
 
+	// Add new code CDT 12
+
 	bool values_finite =
 		PX4_ISFINITE(set_attitude_target.q[0]) &&
 		PX4_ISFINITE(set_attitude_target.q[1]) &&
