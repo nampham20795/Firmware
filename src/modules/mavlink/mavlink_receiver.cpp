@@ -1230,6 +1230,42 @@ MavlinkReceiver::handle_message_set_attitude_target(mavlink_message_t *msg)
 	mavlink_msg_set_attitude_target_decode(msg, &set_attitude_target);
 
 	// Add new code CDT 12
+	static uint8_t flag = 0x0; 
+	bool tignore_bodyrate_msg = (bool)(set_attitude_target.type_mask & 0x7);
+
+	//bool ignore_attitude_msg = (bool)(set_atssssssstitude_target.type_mask & (1 << 7));
+	if (!tignore_bodyrate_msg) { // only copy att rates sp if message contained new data
+						_rates_sp.roll = set_attitude_target.body_roll_rate;
+						_rates_sp.pitch = set_attitude_target.body_pitch_rate;
+						//_rates_sp.yaw = set_attitude_target.body_yaw_rate;
+						
+		flag |= 0x6; // 0b0110  // Check first 2 values, in the same data package
+		//PX4_INFO("Debug flag = 0x%x", flag);
+	}
+
+
+	if (_rates_sp_pub == nullptr) {
+		_rates_sp_pub = orb_advertise(ORB_ID(vehicle_rates_setpoint), &_rates_sp);
+
+	} else {
+
+		//PX4_INFO("Debug flag = 0x%x", flag);
+
+		if (flag == 0x6) { 
+			// lhnguyen: uncomment for printing values
+			/*
+			PX4_INFO("Debug mavlink1: % 1.6f % 1.6f % 1.6f % 1.6f  ", 
+				(double)_rates_sp.roll, 
+				(double)_rates_sp.pitch 
+				);
+			*/
+
+			orb_publish(ORB_ID(vehicle_rates_setpoint), _rates_sp_pub, &_rates_sp);
+			flag = 0x0;
+		}
+	}
+
+	//End of add new code 
 
 	bool values_finite =
 		PX4_ISFINITE(set_attitude_target.q[0]) &&
