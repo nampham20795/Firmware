@@ -1128,6 +1128,12 @@ then
 		fi
 	fi
 
+	#CDT12 debug
+	if ver hwcmp PX4FMU_V2
+	then
+		pwm failsafe -c 12345678 -p 1500
+	fi
+
 # End of autostart
 fi
 
