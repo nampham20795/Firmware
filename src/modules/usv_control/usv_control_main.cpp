@@ -252,7 +252,7 @@ USVControl::task_main()
 
 		poll_fds.fd = _v_rates_sp_sub;
     		int pret = px4_poll(&poll_fds, 1, 10);
-    		orb_copy(ORB_ID(vehicle_rates_setpoint), _v_rates_sp_sub, &_v_rates_sp);
+    		
 
     		/* this is undesirable but not much we can do - might want to flag unhappy status */
    		if (pret < 0) {
@@ -267,13 +267,13 @@ USVControl::task_main()
     		//CDT12 debug: Comment for avoiding joystick change checking!!!
     		//if (poll_fds.revents & POLLIN) {
     		if (true){
-
+                	orb_copy(ORB_ID(vehicle_rates_setpoint), _v_rates_sp_sub, &_v_rates_sp);
     			
         		
         		int pwm_value[6] = {1500, 1500, 1500, 1500, 1500, 1500 }; //debug, for testing approximation function
 
-        		pwm_value[0] = _v_rates_sp.roll;
-        		pwm_value[1] = _v_rates_sp.pitch;
+        		pwm_value[0] = 1500 +  (int)(50.0*(double)_v_rates_sp.roll);
+        		pwm_value[1] = 1500 +  (int)(50.0*(double)_v_rates_sp.pitch);
 
 
 
