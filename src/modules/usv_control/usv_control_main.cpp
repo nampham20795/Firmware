@@ -279,7 +279,7 @@ USVControl::task_main()
 
         		for (unsigned i = 0; i < 6; i++) {  
                         
-      				//PX4_INFO("PWM_VALUE %d   %5d", i+1, pwm_value[i]);
+      				PX4_INFO("PWM_VALUE %d   %d", i+1, pwm_value[i]);
       				int ret = px4_ioctl(fd, PWM_SERVO_SET(i), pwm_value[i]);       
 
       				if (ret != OK) {
