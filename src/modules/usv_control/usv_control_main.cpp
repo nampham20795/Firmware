@@ -248,54 +248,64 @@ USVControl::task_main()
   	}
 
 
-	while (!_task_should_exit) {
+	while (!_task_should_exit) 
+	{
 
 		poll_fds.fd = _v_rates_sp_sub;
     		int pret = px4_poll(&poll_fds, 1, 10);
     		
 
     		/* this is undesirable but not much we can do - might want to flag unhappy status */
-   		if (pret < 0) {
+   		if (pret < 0) 
+   		{
       			warn("auv att ctrl: poll error %d, %d", pret, errno);
       			/* sleep a bit before next try */
       			usleep(100000);
       			continue;
-    		}
+    	}
 
-    		perf_begin(_loop_perf);
+    	perf_begin(_loop_perf);
 
-    		//CDT12 debug: Comment for avoiding joystick change checking!!!
-    		//if (poll_fds.revents & POLLIN) {
-    		if (true){
-                	orb_copy(ORB_ID(vehicle_rates_setpoint), _v_rates_sp_sub, &_v_rates_sp);
-    			
-        		
-        		int pwm_value[6] = {1500, 1500, 1500, 1500, 1500, 1500 }; //debug, for testing approximation function
+    	//CDT12 debug: Comment for avoiding joystick change checking!!!
+    	//if (poll_fds.revents & POLLIN) {
+    	if (true)
+    	{
+    		int pwm_value[2] = {0, 0}; //debug, for testing approximation function
+               orb_copy(ORB_ID(vehicle_rates_setpoint), _v_rates_sp_sub, &_v_rates_sp);
+            if(((double)_v_rates_sp.roll > 0.0) || ((double)_v_rates_sp.roll < 0.0))
+    		{
+    					
+        		pwm_value[0] = 1500 +  (int)(100.0*(double)_v_rates_sp.roll);
+				pwm_value[1] = 1500 + 	(int)(100.0*(double)_v_rates_sp.roll);
+			}
+			if((double) _v_rates_sp.pitch > 0.0)
+			{
+				pwm_value[1] = 1500 + 	(int)(100.0*(double)_v_rates_sp.pitch);
+			}
+			if((double) _v_rates_sp.pitch < 0.0)
+			{
+				pwm_value[0] = 1500 - 	(int)(100.0*(double)_v_rates_sp.pitch);
+			}
 
-        		pwm_value[0] = 1500 +  (int)(50.0*(double)_v_rates_sp.roll);
-        		pwm_value[1] = 1500 +  (int)(50.0*(double)_v_rates_sp.pitch);
-
-
-
-        		for (unsigned i = 0; i < 6; i++) {  
+        	for (unsigned i = 0; i < 2; i++) 
+        	{  
                         
-      				PX4_INFO("PWM_VALUE %d   %d", i+1, pwm_value[i]);
-      				int ret = px4_ioctl(fd, PWM_SERVO_SET(i), pwm_value[i]);       
+      			PX4_INFO("PWM_VALUE %d   %d", i+1, pwm_value[i]);
+      			int ret = px4_ioctl(fd, PWM_SERVO_SET(i), pwm_value[i]);       
 
-      				if (ret != OK) {
-        				PX4_ERR("PWM_SERVO_SET(%d)", i);
-        				return 1;
-      				}                 
-    			}
+      			if (ret != OK) 
+      			{
+        			PX4_ERR("PWM_SERVO_SET(%d)", i);
+        			return 1;
+      			}                 
+    		}
 
    	 		#ifdef __PX4_NUTTX
       			/* Trigger all timer's channels in Oneshot mode to fire
      	 		* the oneshots with updated values.	
       			*/
       			up_pwm_update();
-    			#endif
-
-
+    		#endif
 
    			 perf_end(_loop_perf);
   		}
