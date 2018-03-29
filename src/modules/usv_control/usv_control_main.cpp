@@ -262,7 +262,7 @@ USVControl::task_main()
       			/* sleep a bit before next try */
       			usleep(100000);
       			continue;
-    	}
+    		}
 
     	perf_begin(_loop_perf);
 
@@ -270,27 +270,119 @@ USVControl::task_main()
     	//if (poll_fds.revents & POLLIN) {
     	if (true)
     	{
-    		int pwm_value[2] = {0, 0}; //debug, for testing approximation function
-               orb_copy(ORB_ID(vehicle_rates_setpoint), _v_rates_sp_sub, &_v_rates_sp);
-            if(((double)_v_rates_sp.roll > 0.0) || ((double)_v_rates_sp.roll < 0.0))
-    		{
-    					
-        		pwm_value[0] = 1500 +  (int)(100.0*(double)_v_rates_sp.roll);
-				pwm_value[1] = 1500 + 	(int)(100.0*(double)_v_rates_sp.roll);
-			}
-			if((double) _v_rates_sp.pitch > 0.0)
+    		int pwm_value[2] = {1500, 1500}; //debug, for testing approximation function
+    		double T[2]={0,0};
+    		double Fcx;
+    		double Tc;
+               	orb_copy(ORB_ID(vehicle_rates_setpoint), _v_rates_sp_sub, &_v_rates_sp);
+               		Fcx =   (double)(20.0*(double)_v_rates_sp.yaw);
+               		Tc  =   (double)(5000.0*(double)_v_rates_sp.pitch);
+               		
+            		if(Fcx > 14.4)
+            		{
+            			Fcx = 	14.4;
+            		}
+            		else if(Fcx >= -10.2 && Fcx <= 14.4)
+            		{
+            			Fcx =   (double)(20.0*(double)_v_rates_sp.yaw);	
+            		}
+            		else if(Fcx < -10.2)
+            		{
+            			Fcx = - 10.2;
+            		}
+
+            		if(Tc > 4872)
+            		{
+            			Tc = 4872;
+            		}
+            		else if(Tc >= -3451 && Tc <= 4872)
+            		{
+            			Tc =   (double)(5000.0*(double)_v_rates_sp.pitch);	
+            		}
+            		else if(Tc < -3451)
+            		{
+            			Tc = -3451;
+            		}
+
+
+            		T[0] =  (double)(0.5*Fcx) + (double)((0.00294)*Tc);
+            		T[1] =  (double)(0.5*Fcx) - (double)((0.00294)*Tc);
+			//Dong co 1
+			if(T[0]>-17.3036 && T[0]<=-6.5)
 			{
-				pwm_value[1] = 1500 + 	(int)(100.0*(double)_v_rates_sp.pitch);
+				pwm_value[0]=(int)(17*T[0]+1390);
 			}
-			if((double) _v_rates_sp.pitch < 0.0)
+			if(T[0]>-6.5 && T[0]<-2.27)
 			{
-				pwm_value[0] = 1500 - 	(int)(100.0*(double)_v_rates_sp.pitch);
+				pwm_value[0]=(int)(24*T[0]+1434);
 			}
+			if(T[0]>-6.5 && T[0]<=-2.27)
+			{
+				pwm_value[0]=(int)(24*T[0]+1434);
+			}
+			if(T[0]>-2.27 && T[0]<=-0.09)
+			{
+				pwm_value[0]=(int)(37*T[0]+1475);
+			}
+			if(T[0]>-0.09 && T[0]<=0.08)
+			{
+				pwm_value[0]=1500;	
+			}			
+			if(T[0]>0.08 && T[0]<=9.4)
+			{
+				pwm_value[0]=(int)(17*T[0]+1540);
+			}
+			if(T[0]>9.4 && T[0]<=20.5)
+			{
+				pwm_value[0]=(int)(12*T[0]+1603);
+			}
+			if(T[0]>20.5 && T[0]<=24)
+			{
+				pwm_value[0]=(int)(13*T[0]+1570);
+			}
+			//Dong co 2
+
+			if(T[1]>-17.3036 && T[1]<=-6.5)
+			{
+				pwm_value[1]=(int)(17*T[0]+1390);
+			}
+			if(T[1]>-6.5 && T[1]<-2.27)
+			{
+				pwm_value[1]=(int)(24*T[1]+1434);
+			}
+			if(T[1]>-6.5 && T[1]<=-2.27)
+			{
+				pwm_value[1]=(int)(24*T[1]+1434);
+			}
+			if(T[1]>-2.27 && T[1]<=-0.09)
+			{
+				pwm_value[1]=(int)(37*T[1]+1475);
+			}
+			if(T[1]>-0.09 && T[1]<=0.08)
+			{
+				pwm_value[1]=1500;
+			}
+			if(T[1]>0.08 && T[1]<=9.4)
+			{
+				pwm_value[1]=(int)(17*T[1]+1540);
+			}
+			if(T[1]>9.4 && T[1]<=20.5)
+			{
+				pwm_value[1]=(int)(12*T[1]+1603);
+			}
+			if(T[1]>20.5 && T[1]<=24)
+			{
+				pwm_value[1]=(int)(13*T[1]+1570);
+			}	
+
+			PX4_INFO("Luc day cua thuyen %0.4f", Fcx);
+			PX4_INFO("Momen xoay tro %0.4f", Tc);
 
         	for (unsigned i = 0; i < 2; i++) 
         	{  
                         
-      			PX4_INFO("PWM_VALUE %d   %d", i+1, pwm_value[i]);
+      			PX4_INFO("Luc day %d   %0.4f", i+1, T[i]);
+      			PX4_INFO("PWM %d %d", i+1, pwm_value[i]);
       			int ret = px4_ioctl(fd, PWM_SERVO_SET(i), pwm_value[i]);       
 
       			if (ret != OK) 
@@ -299,7 +391,8 @@ USVControl::task_main()
         			return 1;
       			}                 
     		}
-
+    		
+    		PX4_INFO("Luc day %0.4f",Fcx);
    	 		#ifdef __PX4_NUTTX
       			/* Trigger all timer's channels in Oneshot mode to fire
      	 		* the oneshots with updated values.	
