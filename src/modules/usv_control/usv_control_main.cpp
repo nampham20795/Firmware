@@ -46,7 +46,8 @@
 #include <px4_getopt.h>
 #include <px4_defines.h>
 #include <px4_log.h>
-
+#include <mathlib/mathlib.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -98,6 +99,17 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/uORB.h>
+#include <uORB/topics/vehicle_gps_position.h>
+#include <uORB/topics/position_setpoint.h>
+#include <uORB/topics/vehicle_force_setpoint.h>
+#include <uORB/topics/sensor_accel.h>
+#include <uORB/topics/sensor_combined.h>
+#include <uORB/topics/sensor_combined.h>
+#include <uORB/topics/vehicle_attitude.h>
+
+
+
+
 
 /**
  *  Unmanned Surface Vehicle control app start / stop handling function
@@ -134,12 +146,41 @@ private:
 	int   	_control_task;      /**< task handle */
 	
 	int	_v_rates_sp_sub;		/**< vehicle rates setpoint subscription */
+	int     _p_sp_sub;
+	int     _v_f_sp_sub;
+	int 	_velocity_sub;
+	int     _s_ac_sub;
+	int     _s_cb_sub;
+	int     _s_gy_sub;
+	int     _v_att_sub;
+
 	
+	double Fcx;
+	double Tc;
+	double dt;
+	double X=0;
+	double xdot; //Lay tu joystick [-1,1]
+	double K;//he so hieu chinh
+	double u;//van toc do duoc tu GPS
+	double dentaU;//sai so van toc
+	double xy;
+	double Z;
+	double tc;
+	double teta;//goc xoay tro do duoc tu IMU
+	double teta_d;//huong mong muon tu joystick
+	double denta_teta;
+	double omega;//van toc goc cua thuyen
+
 
 
 	struct vehicle_rates_setpoint_s		_v_rates_sp;		/**< vehicle rates setpoint */
-
-
+	struct vehicle_gps_position_s		_report_gps_pos;
+	struct position_setpoint_s              _p_sp;
+	struct vehicle_attitude_s        	_v_att; 
+	struct sensor_accel_s                   _s_ac; 
+	struct sensor_combined_s                _s_cb;
+	struct sensor_gyro_s                    _s_gy;
+	
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 	perf_counter_t	_controller_latency_perf;
 
@@ -232,8 +273,13 @@ USVControl::task_main()
 	 */
 	
 	_v_rates_sp_sub = orb_subscribe(ORB_ID(vehicle_rates_setpoint));
+	_p_sp_sub = orb_subscribe(ORB_ID(position_setpoint));
+	_v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
+	_velocity_sub = orb_subscribe(ORB_ID(vehicle_gps_position));
+	_s_ac_sub= orb_subscribe(ORB_ID(sensor_accel));
+	_s_cb_sub= orb_subscribe(ORB_ID(sensor_combined));
+	_s_gy_sub=orb_subscribe(ORB_ID(sensor_gyro));
 	
-
 	/* wakeup source: gyro data from sensor selected by the sensor app */
 	px4_pollfd_struct_t poll_fds = {};
 	poll_fds.events = POLLIN;
@@ -272,11 +318,66 @@ USVControl::task_main()
     	{
     		int pwm_value[2] = {1500, 1500}; //debug, for testing approximation function
     		double T[2]={0,0};
-    		double Fcx;
-    		double Tc;
+    		
                	orb_copy(ORB_ID(vehicle_rates_setpoint), _v_rates_sp_sub, &_v_rates_sp);
-               		Fcx =   (double)(20.0*(double)_v_rates_sp.yaw);
-               		Tc  =   (double)(5000.0*(double)_v_rates_sp.pitch);
+               	orb_copy(ORB_ID(position_setpoint), _p_sp_sub, &_p_sp);
+               	orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
+		orb_copy(ORB_ID(vehicle_gps_position), _velocity_sub, &_report_gps_pos);
+		orb_copy(ORB_ID(sensor_accel), _s_ac_sub, &_s_ac);
+		orb_copy(ORB_ID(sensor_combined), _s_cb_sub, &_s_cb);
+		orb_copy(ORB_ID(sensor_gyro), _s_gy_sub, &_s_gy);
+             
+               		//Tc  =   (double)(5000.0*(double)_v_rates_sp.pitch);
+               		//Fcx =   (double)(20.0*(double)_v_rates_sp.yaw);
+			//On dinh van toc
+    		double last_loop_time = 0;
+    		dt = (hrt_absolute_time() - last_loop_time) / 100000000;
+		last_loop_time = hrt_absolute_time();
+		xdot=(double)_v_rates_sp.yaw;
+		K=0.001f;
+		X += K*xdot*dt;
+			if (X>1)
+			{
+				X=1;
+			}
+			else if(X<-1)
+			{
+				X=-1;
+			}
+			else if(X<1 && X > -1)
+			{
+				X+=0.1*xdot*dt;
+			}
+			//double U = (double)_report_gps_pos.vel_n_m_s;
+			//double dentaU = X-U;
+		u = (double)_s_ac.x_integral;
+		dentaU = u - X;
+		Z += dentaU*dt;
+			if (Z>1)
+			{
+				Z=1;
+			}
+			else if(Z<-1)
+			{
+				Z=-1;
+			}
+			else if(Z<1 && Z > -1)
+			{
+				Z+=dentaU*dt;
+			}
+		//PX4_INFO("Van toc dau vao X %0.4f", X);
+		//PX4_INFO("Z %0.4f", Z);
+		PX4_INFO("Van toc vx %0.4f",(double)_s_ac.x_integral);
+		PX4_INFO("Van toc goc %0.4f",(double)_v_att.yawspeed);
+		PX4_INFO("Goc %0.4f",(double)_report_gps_pos.c_variance_rad);
+	
+		Fcx = 3*(-1.1*dentaU - 0.1*Z) - 0.6*(double)_s_ac.x_integral; 
+	//End
+	//On dinh goc
+		omega  = 0; 
+		teta_d = (double)(3.14*(double)_v_rates_sp.pitch);
+		teta   = 0;
+		Tc =((double) (-sinf(teta - teta_d)) - 3*((double) omega + (double) sinf(teta - teta_d)))*320655;
                		
             		if(Fcx > 14.4)
             		{
@@ -305,8 +406,8 @@ USVControl::task_main()
             		}
 
 
-            		T[0] =  (double)(0.5*Fcx) + (double)((0.00294)*Tc);
-            		T[1] =  (double)(0.5*Fcx) - (double)((0.00294)*Tc);
+            	T[0] =  (double)(0.5*Fcx) + (double)((0.00294)*Tc);
+            	T[1] =  (double)(0.5*Fcx) - (double)((0.00294)*Tc);
 			//Dong co 1
 			if(T[0]>-17.3036 && T[0]<=-6.5)
 			{
@@ -375,9 +476,9 @@ USVControl::task_main()
 				pwm_value[1]=(int)(13*T[1]+1570);
 			}	
 
-			PX4_INFO("Luc day cua thuyen %0.4f", Fcx);
-			PX4_INFO("Momen xoay tro %0.4f", Tc);
-
+		PX4_INFO("Luc day cua thuyen %0.4f", Fcx);
+		PX4_INFO("Momen xoay tro %0.4f", Tc);
+			
         	for (unsigned i = 0; i < 2; i++) 
         	{  
                         
@@ -392,7 +493,11 @@ USVControl::task_main()
       			}                 
     		}
     		
-    		PX4_INFO("Luc day %0.4f",Fcx);
+    	
+
+		
+		
+
    	 		#ifdef __PX4_NUTTX
       			/* Trigger all timer's channels in Oneshot mode to fire
      	 		* the oneshots with updated values.	
