@@ -92,23 +92,12 @@
 #include <uORB/topics/mc_att_ctrl_status.h>
 #include <uORB/topics/multirotor_motor_limits.h>
 #include <uORB/topics/parameter_update.h>
-#include <uORB/topics/sensor_correction.h>
-#include <uORB/topics/sensor_gyro.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
-#include <uORB/topics/vehicle_control_mode.h>
+#include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
-#include <uORB/topics/vehicle_status.h>
-#include <uORB/uORB.h>
 #include <uORB/topics/vehicle_gps_position.h>
-#include <uORB/topics/position_setpoint.h>
-#include <uORB/topics/vehicle_force_setpoint.h>
-#include <uORB/topics/sensor_accel.h>
+#include <uORB/uORB.h>
 #include <uORB/topics/sensor_combined.h>
-#include <uORB/topics/sensor_combined.h>
-#include <uORB/topics/vehicle_attitude.h>
-
-
-
 
 
 /**
@@ -146,41 +135,30 @@ private:
 	int   	_control_task;      /**< task handle */
 	
 	int	_v_rates_sp_sub;		/**< vehicle rates setpoint subscription */
-	int     _p_sp_sub;
-	int     _v_f_sp_sub;
-	int 	_velocity_sub;
-	int     _s_ac_sub;
-	int     _s_cb_sub;
-	int     _s_gy_sub;
-	int     _v_att_sub;
+	int     _v_local_sub;
+	int     _v_gp_pos_sub;
+	int     _sensor_com_sub;
+	int 	R=6371000;	
+	
+	double Tc;
+	double Fcx;
+	double dentaE;
+	double dentaN;
+	double vd,lat,lon,teta,teta_d,denta_teta;
+	double K_Tc;
+	double K_Fx;
+	double a,a1,a2,a3,a4;
+	float d,d1;
+	int vitri = 1;
 
 	
-	double Fcx;
-	double Tc;
-	double dt;
-	double X=0;
-	double xdot; //Lay tu joystick [-1,1]
-	double K;//he so hieu chinh
-	double u;//van toc do duoc tu GPS
-	double dentaU;//sai so van toc
-	double xy;
-	double Z;
-	double tc;
-	double teta;//goc xoay tro do duoc tu IMU
-	double teta_d;//huong mong muon tu joystick
-	double denta_teta;
-	double omega;//van toc goc cua thuyen
-
-
+	
 
 	struct vehicle_rates_setpoint_s		_v_rates_sp;		/**< vehicle rates setpoint */
-	struct vehicle_gps_position_s		_report_gps_pos;
-	struct position_setpoint_s              _p_sp;
-	struct vehicle_attitude_s        	_v_att; 
-	struct sensor_accel_s                   _s_ac; 
-	struct sensor_combined_s                _s_cb;
-	struct sensor_gyro_s                    _s_gy;
-	
+	struct vehicle_local_position_s         _v_local;
+	struct vehicle_gps_position_s           _v_gp_pos;
+	struct sensor_combined_s                _sensor_com;
+
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 	perf_counter_t	_controller_latency_perf;
 
@@ -197,6 +175,7 @@ private:
 	 * Main attitude control task.
 	 */
 	int		task_main();
+
 };
 
 namespace usv_control
@@ -257,7 +236,6 @@ USVControl::~USVControl()
 
 
 
-
 void
 USVControl::task_main_trampoline(int argc, char *argv[])
 {
@@ -273,13 +251,10 @@ USVControl::task_main()
 	 */
 	
 	_v_rates_sp_sub = orb_subscribe(ORB_ID(vehicle_rates_setpoint));
-	_p_sp_sub = orb_subscribe(ORB_ID(position_setpoint));
-	_v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
-	_velocity_sub = orb_subscribe(ORB_ID(vehicle_gps_position));
-	_s_ac_sub= orb_subscribe(ORB_ID(sensor_accel));
-	_s_cb_sub= orb_subscribe(ORB_ID(sensor_combined));
-	_s_gy_sub=orb_subscribe(ORB_ID(sensor_gyro));
-	
+	_v_local_sub = orb_subscribe(ORB_ID(vehicle_local_position));
+	_v_gp_pos_sub = orb_subscribe(ORB_ID(vehicle_gps_position));
+	_sensor_com_sub =  orb_subscribe(ORB_ID(sensor_combined));
+
 	/* wakeup source: gyro data from sensor selected by the sensor app */
 	px4_pollfd_struct_t poll_fds = {};
 	poll_fds.events = POLLIN;
@@ -316,68 +291,142 @@ USVControl::task_main()
     	//if (poll_fds.revents & POLLIN) {
     	if (true)
     	{
-    		int pwm_value[2] = {1500, 1500}; //debug, for testing approximation function
-    		double T[2]={0,0};
-    		
+    	
                	orb_copy(ORB_ID(vehicle_rates_setpoint), _v_rates_sp_sub, &_v_rates_sp);
-               	orb_copy(ORB_ID(position_setpoint), _p_sp_sub, &_p_sp);
-               	orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
-		orb_copy(ORB_ID(vehicle_gps_position), _velocity_sub, &_report_gps_pos);
-		orb_copy(ORB_ID(sensor_accel), _s_ac_sub, &_s_ac);
-		orb_copy(ORB_ID(sensor_combined), _s_cb_sub, &_s_cb);
-		orb_copy(ORB_ID(sensor_gyro), _s_gy_sub, &_s_gy);
-             
-               		//Tc  =   (double)(5000.0*(double)_v_rates_sp.pitch);
-               		//Fcx =   (double)(20.0*(double)_v_rates_sp.yaw);
-			//On dinh van toc
-    		double last_loop_time = 0;
-    		dt = (hrt_absolute_time() - last_loop_time) / 100000000;
-		last_loop_time = hrt_absolute_time();
-		xdot=(double)_v_rates_sp.yaw;
-		K=0.001f;
-		X += K*xdot*dt;
-			if (X>1)
-			{
-				X=1;
-			}
-			else if(X<-1)
-			{
-				X=-1;
-			}
-			else if(X<1 && X > -1)
-			{
-				X+=0.1*xdot*dt;
-			}
-			//double U = (double)_report_gps_pos.vel_n_m_s;
-			//double dentaU = X-U;
-		u = (double)_s_ac.x_integral;
-		dentaU = u - X;
-		Z += dentaU*dt;
-			if (Z>1)
-			{
-				Z=1;
-			}
-			else if(Z<-1)
-			{
-				Z=-1;
-			}
-			else if(Z<1 && Z > -1)
-			{
-				Z+=dentaU*dt;
-			}
-		//PX4_INFO("Van toc dau vao X %0.4f", X);
-		//PX4_INFO("Z %0.4f", Z);
-		PX4_INFO("Van toc vx %0.4f",(double)_s_ac.x_integral);
-		PX4_INFO("Van toc goc %0.4f",(double)_v_att.yawspeed);
-		PX4_INFO("Goc %0.4f",(double)_report_gps_pos.c_variance_rad);
+           	orb_copy(ORB_ID(vehicle_local_position), _v_local_sub, &_v_local);
+           	orb_copy(ORB_ID(vehicle_gps_position), _v_gp_pos_sub, &_v_gp_pos);
+           	orb_copy(ORB_ID(sensor_combined),_sensor_com_sub, &_sensor_com);
+           	PX4_INFO("Goc %0.6f",(double)_v_local.yaw);
+           	PX4_INFO("Van toc vx %0.6f",(double)_v_local.vx);
+ 		PX4_INFO("Van toc goc %0.6f",(double)_sensor_com.gyro_rad[2]);
+
+           	//double T[2];
+		int pwm_value[2] = {1500,1500};
+		double T[2];
+		//int vitri = 1;
+		double Lat_plan1 = 21.0504029;
+		double Lon_plan1 = 105.7738105;
+		double Lat_plan2 = 21.0505421;
+		double Lon_plan2 = 105.7732845;
+		double Lat_plan3 = 21.0501881;
+		double Lon_plan3 = 105.7734632;
+		//double Lat_plan;
+		//double Lon_plan;
+		lat = ((double)_v_gp_pos.lat)/10000000;
+		lon = ((double)_v_gp_pos.lon)/10000000;
 	
-		Fcx = 3*(-1.1*dentaU - 0.1*Z) - 0.6*(double)_s_ac.x_integral; 
-	//End
-	//On dinh goc
-		omega  = 0; 
-		teta_d = (double)(3.14*(double)_v_rates_sp.pitch);
-		teta   = 0;
-		Tc =((double) (-sinf(teta - teta_d)) - 3*((double) omega + (double) sinf(teta - teta_d)))*320655;
+		
+
+		
+		/*if((double)lat > 21.0504000 && (double)lat <= 21.0506999 && (double)lon > 105.7732000 && (double)lon <= 105.7739999 )
+		{
+		dentaN = (double)Lat_plan1 - (double)lat;
+		dentaE = (double)Lon_plan1 - (double)lon;
+		//teta = atan(((Lon_plan2 - lat)*(M_PI/180))/((Lat_plan2 - lat)*(M_PI*180)));
+		teta = (double)_v_local.yaw;
+		teta_d = -0.6;
+		K_Fx = 0.55;
+		}
+	
+		if((double)lat > 21.0501300 && (double)lat < 21.0506400 && (double)lon > 105.7732000 && (double)lon < 105.7736000)
+		{
+		dentaN = (double)Lat_plan2 - (double)lat;
+		dentaE = (double)Lon_plan2 - (double)lon;
+		//teta = atan(((Lon_plan3 - lat)*(M_PI/180))/((Lat_plan3 - lat)*(M_PI*180)));
+		//teta = (double)_v_local.yaw;
+		teta_d = 2.1;
+		K_Fx = 0.55;
+		}
+		if((double)lat > 21.0501300 && (double)lat <= 21.0503400 && (double)lon > 105.7735100 && (double)lon < 105.7736900)
+		{
+		Fcx = 0;
+		Tc = 0;
+		}*/
+		if (vitri == 1)
+		{	
+			a1 = 0.5*((double)Lat_plan2 - (double)lat);
+			a2 = (double)cosf(Lat_plan2)*(double)cosf(lat);
+			a3 = sinf(0.5*((double)Lon_plan2 - (double)lon));
+			a4 = (double)sinf((double)a1 + (double)a2*(double)a3*(double)a3);
+			teta_d = -0.6;
+			K_Fx = 0.5;
+			a = a4*a4;
+			d1= sqrtf(a)/sqrtf(1-a);
+			d = 2*R*atanf(d1);
+			if (d < 200)
+			{
+				vitri = 2;
+			}
+
+		}
+		if (vitri == 2)
+		{	a1 = 0.5*((double)Lat_plan3 - (double)lat);
+			a2 = (double)cosf(Lat_plan3)*(double)cosf(lat);
+			a3 = sinf(0.5*((double)Lon_plan3 - (double)lon));
+			a4 = (double)sinf((double)a1 + (double)a2*(double)a3*(double)a3);
+			a = a4*a4;
+			d1= sqrtf(a)/sqrtf(1-a);
+			d = 2*R*atanf(d1);
+			teta_d = 2.9;
+			K_Fx = 0.5;
+			if (d < 200)
+			{
+				vitri = 3;
+			}
+		}
+		if (vitri == 3)
+		{	a1 = 0.5*((double)Lat_plan1 - (double)lat);
+			a2 = (double)cosf(Lat_plan1)*(double)cosf(lat);
+			a3 = sinf(0.5*((double)Lon_plan1 - (double)lon));
+			a4 = (double)sinf((double)a1 + (double)a2*(double)a3*(double)a3);
+			a = a4*a4;
+			d1= sqrtf(a)/sqrtf(1-a);
+			d = 2*R*atanf(d1);
+			teta_d = 0.9;
+			K_Fx = 0.5;
+			if (d < 200)
+			{
+				K_Fx = 0;
+				K_Tc =0;
+			}
+		}
+
+		
+		
+		teta = (double)_v_local.yaw;
+		//teta_d = -0.6;
+		denta_teta = teta - teta_d;
+		
+		if(denta_teta > 0.04)
+		{
+			denta_teta = teta - teta_d;
+		
+		}
+		else if(denta_teta < 0.04 && denta_teta > -0.04)
+		{
+			denta_teta = 0;
+			
+		}
+		else if(denta_teta < -0.04)
+		{
+			denta_teta = teta - teta_d;
+		
+		}
+		//K_Tc = 0.5*(- 5*(double)sinf(denta_teta) - 5*(double)cosf(denta_teta)*(double)_sensor_com.gyro_rad[2]);
+		K_Tc = -(double)sinf(denta_teta);	
+		//K_Fx  = 10000*((double)sqrtf(dentaN*dentaN + dentaE*dentaE));
+		PX4_INFO("he so Tc %0.4f",(double)K_Tc);
+		PX4_INFO("denta %0.4f",(double)denta_teta);
+		PX4_INFO("he so Fx %0.4f",(double)K_Fx);
+		PX4_INFO("Khoang cach d %0.4f",(double)d);
+		PX4_INFO("Vi tri %d",vitri);
+		//PX4_INFO("Lat %0.9f",(double)lat);
+ 		//PX4_INFO("Lon %0.9f",(double)lon);
+ 		//PX4_INFO("teta %0.9f",(double)teta);
+ 	
+ 		Tc  =   (double)(3000.0*(double)K_Tc);
+ 		Fcx =   (double)(15.0*(double)K_Fx);
+               
                		
             		if(Fcx > 14.4)
             		{
@@ -385,7 +434,7 @@ USVControl::task_main()
             		}
             		else if(Fcx >= -10.2 && Fcx <= 14.4)
             		{
-            			Fcx =   (double)(20.0*(double)_v_rates_sp.yaw);	
+            			Fcx =   (double)(20.0*(double)K_Fx);	
             		}
             		else if(Fcx < -10.2)
             		{
@@ -398,7 +447,7 @@ USVControl::task_main()
             		}
             		else if(Tc >= -3451 && Tc <= 4872)
             		{
-            			Tc =   (double)(5000.0*(double)_v_rates_sp.pitch);	
+            			Tc  =   (double)(5000.0*(double)K_Tc);	
             		}
             		else if(Tc < -3451)
             		{
@@ -406,8 +455,8 @@ USVControl::task_main()
             		}
 
 
-            	T[0] =  (double)(0.5*Fcx) + (double)((0.00294)*Tc);
-            	T[1] =  (double)(0.5*Fcx) - (double)((0.00294)*Tc);
+            		T[0] =  (double)(0.5*Fcx) + (double)((0.00294)*Tc);
+            		T[1] =  (double)(0.5*Fcx) - (double)((0.00294)*Tc);
 			//Dong co 1
 			if(T[0]>-17.3036 && T[0]<=-6.5)
 			{
@@ -476,14 +525,15 @@ USVControl::task_main()
 				pwm_value[1]=(int)(13*T[1]+1570);
 			}	
 
-		PX4_INFO("Luc day cua thuyen %0.4f", Fcx);
-		PX4_INFO("Momen xoay tro %0.4f", Tc);
-			
+			PX4_INFO("Luc day cua thuyen %0.4f", Fcx);
+			PX4_INFO("Momen xoay tro %0.4f", Tc);
+		
+		
+
         	for (unsigned i = 0; i < 2; i++) 
         	{  
                         
-      			PX4_INFO("Luc day %d   %0.4f", i+1, T[i]);
-      			PX4_INFO("PWM %d %d", i+1, pwm_value[i]);
+      			PX4_INFO("PWM_VALUE %d   %d", i+1, pwm_value[i]);
       			int ret = px4_ioctl(fd, PWM_SERVO_SET(i), pwm_value[i]);       
 
       			if (ret != OK) 
@@ -492,11 +542,6 @@ USVControl::task_main()
         			return 1;
       			}                 
     		}
-    		
-    	
-
-		
-		
 
    	 		#ifdef __PX4_NUTTX
       			/* Trigger all timer's channels in Oneshot mode to fire
